@@ -1,25 +1,57 @@
-from encodings.punycode import T
-from enum import unique
-from venv import create
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 class Post(models.Model):
+    POST      = 'post'
+    REPOST    = 'repost'
+    QUOTE     = 'quote'
+    REPLY     = 'reply'
+    TYPE_CHOICES = [
+        (POST,   'Post'),
+        (REPOST, 'Repost'),
+        (QUOTE,  'Quote'),
+        (REPLY,  'Reply'),
+    ]
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name='posts'
         )
-    description = models.TextField(max_length=1000)
+    description = models.TextField(max_length=1000, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    parent      = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        related_name='children',
+        on_delete=models.CASCADE
+    )
+        # nou: tipul postării
+    type        = models.CharField(
+        max_length=6,
+        choices=TYPE_CHOICES,
+        default=POST,
+    )
+
     
     def __str__(self):
-        return f"{self.author.username}'s post on {self.created_at} "
-    
+        user = self.author.username
+        # repost simplu (share fără comentariu)
+        if self.type == Post.REPOST and self.parent:
+            return f"{user} reposted #{self.parent.id}"
+        # quote-repost (share + comentariu)
+        if self.type == Post.QUOTE and self.parent:
+            base = f"{user} quoted #{self.parent.id}"
+            if self.description:
+                return f"{base}: {self.description[:30]}…"
+            return base
+        if self.type == Post.REPLY and self.parent:
+            return f"{user} replied to #{self.parent.id}"
+        # postare originală
+        return f"{user} posted on {self.created_at:%Y-%m-%d %H:%M}"
     class Meta:
-        ordering =['created_at']
+        ordering = ['-created_at']
 
 class Media(models.Model):
     MEDIA_TYPE_CHOICES = [
@@ -38,16 +70,9 @@ class Media(models.Model):
         )
     
     def clean(self):
-        if self.media_type == 'video':
-            try:
-                clip = VideoFileClip(self.file.path)
-            except Exception as e:
-                raise ValidationError (f"Your video couldn't be processed: {e}")
-            
-            if clip.duration > 180:
-                raise ValidationError("Your video must be shorter than 3 minutes")
-            
-            clip.close()
+        super().clean()
+        if self.file and self.media_type == "video" and self.file.size > 256 * 1024 * 1024:
+            raise ValidationError("Video must be smaller than 256 MB.")
         
 class Like(models.Model):
     post = models.ForeignKey(
@@ -67,36 +92,3 @@ class Like(models.Model):
         
     def __str__(self):
         return f"{self.user.username} liked Post {self.post.pk}"
-    
-class Comment(models.Model):
-    post = models.ForeignKey(
-        Post,
-        on_delete=models.CASCADE,
-        related_name="comments"
-        )
-    author = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE
-        )
-    content = models.TextField(max_length=500)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    parent = models.ForeignKey(
-        'self', 
-        on_delete=models.CASCADE, 
-        null=True,
-        blank=True,
-        related_name='replies'
-        )
-    
-    likes = models.ManyToManyField(
-        User,
-        related_name='comment_likes',
-        blank=True
-    )
-    
-    def __str__(self):
-        return f"Comment by {self.author.username} on Post {self.post.pk}"
-    
-    class Meta:
-        ordering = ['created_at']

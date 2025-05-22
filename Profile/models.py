@@ -1,5 +1,3 @@
-from tokenize import blank_re
-from turtle import mode
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -31,6 +29,11 @@ class Profile(models.Model):
         blank=True,
         null=True,
         default='profile_images/default.jpg'
+    )
+    cover_image = models.ImageField(
+        upload_to="cover_images/",
+        blank=True,
+        null=True
     )
     friends = models.ManyToManyField('self', blank=True, symmetrical=True)
     

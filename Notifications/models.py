@@ -1,8 +1,8 @@
-from turtle import back
+
 from django.db import models
 from django.contrib.auth.models import User
 from Profile.models import Profile
-from Posts.models import Comment, Post
+from Posts.models import Post
 from Friendship.models import FriendRequest
 # Create your models here.
 
@@ -39,7 +39,8 @@ class Notifications(models.Model):
         Post, 
         on_delete=models.CASCADE,
         null=True, 
-        blank=True
+        blank=True,
+        related_name="post_notifications"
         )
     friend_request = models.ForeignKey(
         FriendRequest,
@@ -48,10 +49,11 @@ class Notifications(models.Model):
         blank=True
         )
     comment =models.ForeignKey(
-        Comment,
+        Post,
         on_delete=models.CASCADE,
         null=True,
-        blank=True
+        blank=True,
+        related_name="comment_notifications"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     is_read = models.BooleanField(default=False)

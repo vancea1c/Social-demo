@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from Friendship.models import FriendRequest
 from Profile.models import Profile
 from .models import Notifications
-from Posts.models import Post, Like, Comment
+from Posts.models import Post, Like
 
 @receiver(post_save, sender=FriendRequest)
 def create_friend_request_notification(sender, instance, created, **kwargs):
@@ -45,35 +45,39 @@ def notify_post_like(sender, instance, created, **kwargs):
                 post = post
             )
 
-@receiver(post_save, sender = Comment)
+@receiver(post_save, sender = Post)
 def notify_post_comment(sender, instance, created, **kwargs):
-    if created:
-        post = instance.post
-        if post.author != instance.author:
-            Notifications.objects.create(
-                to_user=post.author,
-                message = f"{instance.author.username} commented on your post.",
-                notification_type = Notifications.POST_COMMENT,
-                comment = instance,
-                post = post
-            )
+    if not created or instance.type != Post.REPLY:
+        return
+    parent_post = instance.parent
+    if parent_post.author != instance.author:
+        Notifications.objects.create(
+            to_user=parent_post.author,
+            message=f"{instance.author.username} commented on your post.",
+            notification_type=Notifications.POST_COMMENT,
+            post=parent_post,
+            comment=instance,  # poți avea câmp comment FK spre Post
+        )
+
             
-@receiver(post_save, sender = Comment)
+@receiver(post_save, sender = Post)
 def notify_comment_reply(sender, instance, created, **kwargs):
-    if created and instance.parent is not None:
-        parent_comment = instance.parent
-        if parent_comment.author != instance.author:
-            Notifications.objects.create(
-                to_user=parent_comment.author,
-                message = f"{instance.author.username} replied to your comment on {instance.post.author.username}'s Post.",
-                notification_type = Notifications.COMMENT_REPLY,
-                comment = instance,
-                post = instance.post
-            )
+    if not created or instance.type != Post.REPLY or instance.parent is None:
+        return
+
+    parent_reply = instance.parent  # tatăl reply-ului
+    if parent_reply.author != instance.author:
+        Notifications.objects.create(
+            to_user=parent_reply.author,
+            message=f"{instance.author.username} replied to your comment.",
+            notification_type=Notifications.COMMENT_REPLY,
+            post=instance.parent.parent or instance.parent,  
+            comment=instance,
+        )
         
 User = get_user_model()
 
-@receiver(m2m_changed, sender = Comment.likes.through)
+@receiver(m2m_changed, sender = Like)
 def notify_comment_like(sender, instance, action, pk_set, **kwargs):
     if action == 'post_add':
         for user_pk in pk_set:

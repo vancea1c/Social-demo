@@ -6,9 +6,10 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.core.mail import send_mail
 from django.core.cache import cache
+from django.contrib.auth import get_user_model
+
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-
 from Profile.models import Profile, GENDER_CHOICES
 
 import datetime
@@ -17,68 +18,149 @@ from dataclasses import fields
 from accounts.validators import StrongPasswordValidator
 from accounts.validators import UsernameValidator
 
-
-class ForgotPwSerializer(serializers.ModelSerializer):
-    identifier = serializers.CharField(
-        required=True,
-        allow_blank=False,  # important pentru eroarea "blank"
-        error_messages={
-            "blank": "Username or Email is required.",
-            "required": "Username or Email is required.",
-        }
-    )
-
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["identifier"]
+        fields = ['id', 'first_name', 'last_name', 'username', 'email']
+        read_only_fields=['id', 'username']
 
-    def validate(self, data):
-        identifier = data.get("identifier", "").strip()
-        errors = {}
 
-        if not identifier:
-            errors["identifier"] = "Username or Email is required."
-        if errors:
-            raise ValidationError(errors)
+class ForgotPwRequestSerializer(serializers.Serializer):
+    identifier = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "blank":    "Username or Email is required.",
+            "required": "Username or Email is required.",
+        },
+    )
 
-        if "@" in identifier:
+    def validate_identifier(self, value):
+        value = value.strip()
+        if "@" in value:
             try:
-                user_obj = User.objects.get(email=identifier)
+                user = User.objects.get(email=value)
             except User.DoesNotExist:
-                raise ValidationError(
-                    {"identifier": "This email does not exit in our system."}
-                )
+                raise ValidationError("This email does not exist in our system.")
         else:
             try:
-                user_obj = User.objects.get(username=identifier)
+                user = User.objects.get(username=value)
             except User.DoesNotExist:
-                raise ValidationError(
-                    {"identifier": "This username does not exit in our system."}
-                )
+                raise ValidationError("This username does not exist in our system.")
+        self.context["user"] = user
+        return value
 
-        data["user"] = user_obj
-        return data
-
-    def send_reset_code(self):
-        code = "".join(random.choices(string.ascii_letters + string.digits, k=6))
-        user_obj = self.validated_data["user"]
-
-        # Stocăm codul în cache (valabil 5 minute, de exemplu)
-        cache_key = f"pw_reset_{user_obj.id}"
-        cache.set(cache_key, code, 300)
-
+    def save(self):
+        user = self.context["user"]
+        # generează cod și îl stochează în cache
+        code = "".join(
+            random.choices(string.ascii_letters + string.digits, k=6)
+        )
+        cache_key = f"pw_reset_{user.id}"
+        cache.set(cache_key, code, 300)  # 5 minute
+        # trimite email
         subject = "Password Reset Code"
         message = (
-            f"Hello {user_obj.username},\n\n"
+            f"Hello {user.username},\n\n"
             f"Here is your password reset code: {code}\n"
             "This code is valid for 5 minutes."
         )
-        from_email = "social.project1304@gmail.com"
-        recipient_list = [user_obj.email]
-
-        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        send_mail(
+            subject,
+            message,
+            "social.project1304@gmail.com",
+            [user.email],
+            fail_silently=False,
+        )
         return code
 
+
+class ForgotPwVerifySerializer(serializers.Serializer):
+    identifier = serializers.CharField(required=True)
+    code = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        identifier = attrs["identifier"].strip()
+        code = attrs["code"].strip()
+
+        # găsește user-ul
+        if "@" in identifier:
+            try:
+                user = User.objects.get(email=identifier)
+            except User.DoesNotExist:
+                raise ValidationError({"identifier": "Unknown email."})
+        else:
+            try:
+                user = User.objects.get(username=identifier)
+            except User.DoesNotExist:
+                raise ValidationError({"identifier": "Unknown username."})
+
+        # compară codul cu cel din cache
+        cache_key = f"pw_reset_{user.id}"
+        real_code = cache.get(cache_key)
+        if real_code is None:
+            raise ValidationError({"code": "Reset code expired."})
+        if code != real_code:
+            raise ValidationError({"code": "Incorrect code."})
+
+        attrs["user"] = user
+        return attrs
+    
+class ResetPasswordSerializer(serializers.Serializer):
+    identifier  = serializers.CharField(required=True)
+    code        = serializers.CharField(required=True)
+    newPassword = serializers.CharField(required=True, write_only=True)
+
+    def validate_newPassword(self, value: str) -> str:
+        validator = StrongPasswordValidator()
+        try:
+            validator.validate(value)
+        except ValidationError as e:
+            raise serializers.ValidationError(e.messages)
+        return value
+    
+    def validate(self, attrs):
+        identifier  = attrs["identifier"].strip()
+        code        = attrs["code"].strip()
+        new_pw      = attrs["newPassword"]
+
+        # 1️⃣ găsește user-ul după identifier
+        if "@" in identifier:
+            try:
+                user = User.objects.get(email=identifier)
+            except User.DoesNotExist:
+                raise ValidationError({"identifier": "Unknown email."})
+        else:
+            try:
+                user = User.objects.get(username=identifier)
+            except User.DoesNotExist:
+                raise ValidationError({"identifier": "Unknown username."})
+
+        # 2️⃣ verifică codul în cache
+        cache_key = f"pw_reset_{user.id}"
+        real_code = cache.get(cache_key)
+        if real_code is None:
+            raise ValidationError({"code": "Reset code expired."})
+        if code != real_code:
+            raise ValidationError({"code": f"Incorrect code. {real_code}"})
+
+        # 3️⃣ toate bune → atașăm user și vom șterge codul
+        attrs["user"] = user
+        return attrs
+
+    def save(self):
+        user = self.validated_data["user"]
+        new_pw = self.validated_data["newPassword"]
+
+        # schimbă parola și salvează
+        user.set_password(new_pw)
+        user.save()
+
+        # invalidează codul în cache
+        cache_key = f"pw_reset_{user.id}"
+        cache.delete(cache_key)
+
+        return user
 
 class SignInSerializer(serializers.Serializer):
     identifier = serializers.CharField(required=True)
@@ -105,6 +187,7 @@ class SignInSerializer(serializers.Serializer):
                 raise ValidationError(
                     {"identifier": "This email does not exist in our system."}
                 )
+            username = user_obj.username
         else:
             username = identifier
             if not User.objects.filter(username=username).exists():

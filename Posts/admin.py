@@ -1,28 +1,21 @@
 from django.contrib import admin
 from django import forms
-from .models import Post, Media, Comment, Like
+from .models import Post, Media, Like
 # Register your models here.
 
 class MediaInline(admin.StackedInline):
     model = Media
     extra = 1 
     
-class CommentInlineForm(forms.ModelForm):
-    class Meta:
-        model = Comment
-        fields = '__all__'
-        widgets = {
-            'likes': forms.CheckboxSelectMultiple,
-        }
-        
-class CommentInLine(admin.StackedInline):
-    model = Comment
-    form = CommentInlineForm
-    extra = 1
-    
 class LikeInLine(admin.StackedInline):
     model = Like
     extra = 1 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    inlines = [MediaInline, CommentInLine, LikeInLine]
+    list_display = (
+        'id', 'author', 'type', 'parent', 'created_at',
+    )
+    list_filter = ('type', 'created_at', 'author')
+    search_fields = ('author__username', 'description')
+    raw_id_fields = ('parent',)
+    ordering = ('-created_at',)
