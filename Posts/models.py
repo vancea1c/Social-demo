@@ -33,6 +33,14 @@ class Post(models.Model):
         choices=TYPE_CHOICES,
         default=POST,
     )
+    def clean (self):
+        super().clean()
+        if self.type ==Post.REPOST and self.parent is None:
+            raise ValidationError("A repost must have a parent post.")
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+    
 
     
     def __str__(self):
@@ -52,6 +60,7 @@ class Post(models.Model):
         return f"{user} posted on {self.created_at:%Y-%m-%d %H:%M}"
     class Meta:
         ordering = ['-created_at']
+        
 
 class Media(models.Model):
     MEDIA_TYPE_CHOICES = [
@@ -73,6 +82,8 @@ class Media(models.Model):
         super().clean()
         if self.file and self.media_type == "video" and self.file.size > 256 * 1024 * 1024:
             raise ValidationError("Video must be smaller than 256 MB.")
+        if len(self.file)>4:
+            raise ValidationError("You can upload up to 4 media items (photos or videos).")
         
 class Like(models.Model):
     post = models.ForeignKey(

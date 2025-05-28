@@ -14,7 +14,6 @@ class PostSerializer(serializers.ModelSerializer):
     created_at = serializers.DateTimeField(format="%Y-%m-%dT%H:%M:%SZ", read_only=True)
     
     
-    
         # nou: tipul și parent-ul
     type = serializers.ChoiceField(
         choices=Post.TYPE_CHOICES,
@@ -91,7 +90,14 @@ class PostSerializer(serializers.ModelSerializer):
                 )
 
         return files
-
+    
+    def validate(self, data):
+        post_type=data.get('type') or (self.instance.type if self.instance else None)
+        parent = data.get('parent') if 'parent' in data else (self.instance.parent if self.instance else None)
+        if post_type == 'repost' and not parent:
+            raise serializers.ValidationError("A repost must have a parent post.")
+        return data
+    
     def create(self, validated_data):
         uploads = validated_data.pop('uploads', [])
         post = Post.objects.create(**validated_data)
@@ -99,3 +105,13 @@ class PostSerializer(serializers.ModelSerializer):
             kind = 'video' if f.content_type.startswith('video/') else 'photo'
             Media.objects.create(post=post, file=f, media_type=kind)
         return post
+    
+class PostDetailSerializer(PostSerializer):
+    children = serializers.SerializerMethodField()
+
+    def get_children(self, obj):
+        replies = obj.children.filter(type=Post.REPLY)
+        return PostDetailSerializer(replies, many=True, context=self.context).data
+
+    class Meta(PostSerializer.Meta):
+        fields = PostSerializer.Meta.fields + ['children']

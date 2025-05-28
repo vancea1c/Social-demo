@@ -1,13 +1,16 @@
+from multiprocessing import context
 from rest_framework import viewsets, permissions, filters, mixins, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from asgiref.sync import async_to_sync
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from django_filters.rest_framework import DjangoFilterBackend
+
 from channels.layers import get_channel_layer
 
 from .models import Post, Like
-from .serializers import PostSerializer
+from .serializers import PostDetailSerializer, PostSerializer
 
 
 def broadcast_to_posts(event_type: str, data: dict):
@@ -47,7 +50,8 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
     
-    filter_backends = [filters.OrderingFilter, filters.SearchFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
+    filterset_fields=['type', 'parent', 'author', 'author__username']
     ordering_fields = ['created_at']
     search_fields = ['description', 'author__username']
     
@@ -73,6 +77,11 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
             qs = qs.filter(parent=parent)
         return qs.distinct()
 
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return PostDetailSerializer  # with children
+        return PostSerializer 
+    
     def perform_create(self, serializer):
         instance = serializer.save(author=self.request.user)
         data = PostSerializer(instance, context={"request": self.request}).data
@@ -83,13 +92,16 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
     def repost(self, request, pk=None):
         parent = self.get_object()
         user = request.user
-
+        if parent is None:
+            return Response({"error":"Cannot repost without a parent post."}, status=400)
         # căutăm dacă userul a dat deja repost la această postare
         existing = Post.objects.filter(
             author=user, parent=parent, type=Post.REPOST
         ).first()
+        print(f"[BACKEND] Checking repost for user={user} parent={parent.id}")
 
         if existing:
+            print(f"[BACKEND] Deleting existing repost id={existing.id}")
             id_to_delete = existing.id
             existing.delete()
             broadcast_to_posts("post_delete", {"id": id_to_delete})
@@ -104,6 +116,7 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
                 type=Post.REPOST,
                 description=""
             )
+            print(f"[BACKEND] Created new repost id={repost.id} parent={parent.id}")
 
         # Trimite WS NOU cu repostul (post_create)
         data = PostSerializer(repost, context={"request": request}).data
@@ -146,6 +159,7 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='reply')
     def reply(self, request, pk=None):
         parent = self.get_object()
+        print(f"[BACKEND] Creating reply. Parent id: {parent.id}, type: {parent.type}")
         user = request.user
         content = request.data.get('content', '').strip()
         reply_post = Post.objects.create(
