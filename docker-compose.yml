@@ -1,0 +1,65 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: social_pg
+    environment:
+
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 4953
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s              # how often to run the check
+      timeout: 5s                # if pg_isready takes longer than 5s, consider it a failure
+      retries: 5                 # after 5 failures, mark the container as unhealthy
+      start_period: 15s          # give Postgres 15s to initialize before starting to probe
+
+  redis:
+    image: redis:latest
+    container_name: social_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: social_web
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    environment:
+      # Pass these so entrypoint.sh can wait for Postgres
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "postgres"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  pgdata:
+  redisdata:

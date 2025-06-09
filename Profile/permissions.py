@@ -8,6 +8,7 @@ class IsOwnerOrReadOnly(BasePermission):
     """
     def has_object_permission(self, request, view, obj):
         user = request.user
+        
 
         # --- 1) verificăm blocările ---
         # proprietarul profilului te-a blocat?

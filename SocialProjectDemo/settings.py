@@ -21,10 +21,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-^(tua(yyixj*sfzmbi-!h0tavh@w%j$$r5!f@3y94n0&$vy48z"
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret-for-dev")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "0") == "1"
 
 ALLOWED_HOSTS = [
     "localhost",
@@ -97,10 +97,10 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": "Social-demo",
-        "HOST": "localhost",
+        "HOST": "postgres",
         "USER": "postgres",
         "PORT": "5432",
-        "PASSWORD": "4953",
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "4953"),
     }
 }
 
@@ -170,8 +170,10 @@ REST_FRAMEWORK = {
 from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'AUTH_HEADER_TYPES': ('Bearer',),  # prefixul corect
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
 }
 ASGI_APPLICATION = "SocialProjectDemo.asgi.application"
 
@@ -179,7 +181,29 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            "hosts": ["redis://redis:6379/0"],
+        },
+    },
+}
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "channels_redis": {
+            "handlers": ["console"],
+            "level": "DEBUG",
         },
     },
 }

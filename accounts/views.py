@@ -1,32 +1,79 @@
-from argparse import Action
-from email import message
-from math import e
+from django.db import transaction
 from django.shortcuts import render
 from django.contrib.auth.models import User
 
 from rest_framework.views import APIView
 from rest_framework import generics
 from rest_framework.response import Response
-from rest_framework.authtoken.models import Token
-from rest_framework.decorators import api_view, action
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-
-from Profile import serializers
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 from .serializers import (
-    SignInSerializer, SignUpSerializer,
+    PasswordChangeSerializer, SignInSerializer, SignUpSerializer,
     ForgotPwRequestSerializer, ForgotPwVerifySerializer, ResetPasswordSerializer, UserSerializer
 )
-class GetUserView(generics.RetrieveAPIView):
-    serializer_class=UserSerializer
-    permission_classes=([IsAuthenticated])
+from Profile.models import Profile
+from Posts.models import Post
+
+class AccountMeView(APIView):
+    """
+    GET  /api/accounts/me/    --> return the authenticated user's data
+    DELETE /api/accounts/me/   --> delete the authenticated user's account
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        serializer = UserSerializer(request.user, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
-    def get_object(self):
-        return self.request.user
+    @transaction.atomic
+    def delete(self, request, *args, **kwargs):
+        user = request.user
 
+        for outstanding_token in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=outstanding_token)
+        try:
+            profile = Profile.objects.filter(user=user).first() 
+        except Profile.DoesNotExist:
+            profile = None
+        
+        if profile:
+            if profile.profile_image and profile.profile_image.name != "profile_images/default.jpg":
+                 profile.profile_image.delete(save=False)
+            if profile.cover_image:
+                profile.cover_image.delete(save=False)
+                
+        for post in Post.objects.filter(author=user):
+            for media in post.posted_media.all():
+                if media.file:
+                    media.file.delete(save=False)  # remove from storage
+                media.delete()
+                
+                
+        user.delete()
 
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class MyTokenObtainPairView(TokenObtainPairView):
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tokens = serializer.validated_data
+        
+        resp = Response(tokens, status=200)
+        
+        resp.set_cookie(
+            key="access_token",
+            value=tokens["access"],
+            httponly=True,
+            secure=True,
+            samesite="None",
+            path="/",
+        )
+        return resp
 
 # Create your views here.
 class ForgotPasswordView(generics.GenericAPIView):
@@ -81,7 +128,7 @@ class SignInApiView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, )
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         
@@ -89,7 +136,7 @@ class SignInApiView(generics.GenericAPIView):
         refresh = RefreshToken.for_user(user)
         access  = refresh.access_token
 
-        return Response(
+        resp = Response(
             {
                 "message": "Authentication successful.",
                 "user_id": user.id,
@@ -99,11 +146,26 @@ class SignInApiView(generics.GenericAPIView):
                 "last_name": user.last_name,
                 "username": user.username,
                 "email": user.email,
-            }
+            }, status=status.HTTP_200_OK)
+        resp.set_cookie(
+            key="access_token",
+            value=str(access),
+            httponly=True,
+            secure=False,       
+            samesite="Lax",
+            path="/",
         )
+        return resp
 
-
-# views.py
+class PasswordChangeView(generics.GenericAPIView):
+    serializer_class=PasswordChangeSerializer
+    permission_classes =[IsAuthenticated]
+    
+    def post (self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
 
 
 class CheckUsernameView(APIView):

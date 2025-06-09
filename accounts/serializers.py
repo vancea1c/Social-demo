@@ -1,22 +1,39 @@
-import email
+
 import random
 import string
 
-from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.core.mail import send_mail
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from Profile.models import Profile, GENDER_CHOICES
 
 import datetime
-from dataclasses import fields
 
 from accounts.validators import StrongPasswordValidator
 from accounts.validators import UsernameValidator
+from accounts.utils import get_user_or_error
+
+User = get_user_model()
+    
+class PasswordValidationMixin:
+    def _validate_strong_password(self, value: str) -> str:
+        validator = StrongPasswordValidator()
+        try:
+            validator.validate(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages)
+        return value
+    
+    def validate_password(self, value: str) -> str:
+        return self._validate_strong_password(value)
+
+    def validate_newPassword(self, value: str) -> str:
+        return self._validate_strong_password(value)
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -25,33 +42,24 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields=['id', 'username']
 
 
-class ForgotPwRequestSerializer(serializers.Serializer):
+class ForgotPwRequestSerializer( serializers.Serializer):
     identifier = serializers.CharField(
         required=True,
         allow_blank=False,
         error_messages={
-            "blank":    "Username or Email is required.",
-            "required": "Username or Email is required.",
+            "blank":    "Username or Email is required.1",
+            "required": "Username or Email is required.2",
         },
     )
-
-    def validate_identifier(self, value):
-        value = value.strip()
-        if "@" in value:
-            try:
-                user = User.objects.get(email=value)
-            except User.DoesNotExist:
-                raise ValidationError("This email does not exist in our system.")
-        else:
-            try:
-                user = User.objects.get(username=value)
-            except User.DoesNotExist:
-                raise ValidationError("This username does not exist in our system.")
-        self.context["user"] = user
-        return value
-
+    
+    def validate(self, attrs):
+        identifier_value = attrs.get("identifier", "").strip()
+        user = get_user_or_error(identifier_value, field_name="identifier")
+        self.user = user
+        return attrs
+    
     def save(self):
-        user = self.context["user"]
+        user = self.user
         # generează cod și îl stochează în cache
         code = "".join(
             random.choices(string.ascii_letters + string.digits, k=6)
@@ -75,25 +83,21 @@ class ForgotPwRequestSerializer(serializers.Serializer):
         return code
 
 
-class ForgotPwVerifySerializer(serializers.Serializer):
-    identifier = serializers.CharField(required=True)
+class ForgotPwVerifySerializer( serializers.Serializer):
+    identifier = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "blank":    "Username or Email is required.1",
+            "required": "Username or Email is required.2",
+        },
+    )
     code = serializers.CharField(required=True)
 
     def validate(self, attrs):
-        identifier = attrs["identifier"].strip()
+        identifier_value = attrs.get("identifier", "").strip()
         code = attrs["code"].strip()
-
-        # găsește user-ul
-        if "@" in identifier:
-            try:
-                user = User.objects.get(email=identifier)
-            except User.DoesNotExist:
-                raise ValidationError({"identifier": "Unknown email."})
-        else:
-            try:
-                user = User.objects.get(username=identifier)
-            except User.DoesNotExist:
-                raise ValidationError({"identifier": "Unknown username."})
+        user = get_user_or_error(identifier_value, field_name="identifier")
 
         # compară codul cu cel din cache
         cache_key = f"pw_reset_{user.id}"
@@ -106,52 +110,55 @@ class ForgotPwVerifySerializer(serializers.Serializer):
         attrs["user"] = user
         return attrs
     
-class ResetPasswordSerializer(serializers.Serializer):
-    identifier  = serializers.CharField(required=True)
-    code        = serializers.CharField(required=True)
-    newPassword = serializers.CharField(required=True, write_only=True)
-
-    def validate_newPassword(self, value: str) -> str:
-        validator = StrongPasswordValidator()
-        try:
-            validator.validate(value)
-        except ValidationError as e:
-            raise serializers.ValidationError(e.messages)
-        return value
+class ResetPasswordSerializer( PasswordValidationMixin, serializers.Serializer):
+    identifier = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "blank":    "Username or Email is required.",
+            "required": "Username or Email is required.",
+        },
+    )
+    code = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "blank":    "Reset code is required.",
+            "required": "Reset code is required.",
+        },
+    )
+    newPassword = serializers.CharField(
+        required=True,
+        write_only=True,
+        error_messages={
+            "blank":    "New password is required.",
+            "required": "New password is required.",
+        },
+    )
     
     def validate(self, attrs):
-        identifier  = attrs["identifier"].strip()
-        code        = attrs["code"].strip()
-        new_pw      = attrs["newPassword"]
+        code= attrs["code"].strip()
+        
+        identifier_value = attrs.get("identifier", "").strip()
+        user = get_user_or_error(identifier_value, field_name="identifier")
 
-        # 1️⃣ găsește user-ul după identifier
-        if "@" in identifier:
-            try:
-                user = User.objects.get(email=identifier)
-            except User.DoesNotExist:
-                raise ValidationError({"identifier": "Unknown email."})
-        else:
-            try:
-                user = User.objects.get(username=identifier)
-            except User.DoesNotExist:
-                raise ValidationError({"identifier": "Unknown username."})
-
-        # 2️⃣ verifică codul în cache
         cache_key = f"pw_reset_{user.id}"
         real_code = cache.get(cache_key)
         if real_code is None:
             raise ValidationError({"code": "Reset code expired."})
         if code != real_code:
-            raise ValidationError({"code": f"Incorrect code. {real_code}"})
+            raise ValidationError({"code": "Incorrect code."})
 
-        # 3️⃣ toate bune → atașăm user și vom șterge codul
         attrs["user"] = user
         return attrs
+    
+    def validate_newPassword(self, value: str) -> str:
+        return self._validate_strong_password(value)
+
 
     def save(self):
         user = self.validated_data["user"]
         new_pw = self.validated_data["newPassword"]
-
         # schimbă parola și salvează
         user.set_password(new_pw)
         user.save()
@@ -163,47 +170,53 @@ class ResetPasswordSerializer(serializers.Serializer):
         return user
 
 class SignInSerializer(serializers.Serializer):
-    identifier = serializers.CharField(required=True)
-    password = serializers.CharField(required=True, write_only=True)
-
+    identifier = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        error_messages={
+            "blank":    "Username or Email is required.1",
+            "required": "Username or Email is required.2",
+        },
+    )
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={"input_type": "password"},
+        error_messages={
+            "blank":    "Password is required.",
+            "required": "Password is required.",
+        },
+    )
     def validate(self, attrs):
-        identifier = attrs.get("identifier", "").strip()
+        identifier_value = attrs.get("identifier", "").strip()
         password = attrs.get("password")
 
+        try:
+            self.user = get_user_or_error(identifier_value, field_name="identifier")
+        except ValidationError as e:
+            raise
+
         errors = {}
-        if not identifier and not password:
+        if not identifier_value and not password:
             errors["non_field_errors"] = "Username/Email and password are required."
-        elif not identifier:
+        elif not identifier_value:
             errors["identifier"] = "Username or Email is required."
         elif not password:
             errors["password"] = "Password is required."
         if errors:
             raise ValidationError(errors)
 
-        if "@" in identifier:
-            try:
-                user_obj = User.objects.get(email=identifier)
-            except User.DoesNotExist:
-                raise ValidationError(
-                    {"identifier": "This email does not exist in our system."}
-                )
-            username = user_obj.username
-        else:
-            username = identifier
-            if not User.objects.filter(username=username).exists():
-                raise ValidationError(
-                    {"identifier": "This username does not exist in our system."}
-                )
-
-        user = authenticate(username=username, password=password)
-        if not user:
+        authenticated_user = authenticate(
+            username=self.user.username,
+            password=password
+        )
+        if authenticated_user is None:
             raise ValidationError({"password": "Incorrect password."})
 
-        attrs["user"] = user
+        attrs["user"] = authenticated_user
         return attrs
 
-
-class SignUpSerializer(serializers.ModelSerializer):
+class SignUpSerializer(PasswordValidationMixin, serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     gender = serializers.ChoiceField(choices=GENDER_CHOICES, required=True)
     birth_date = serializers.DateField(required=True)
@@ -249,17 +262,9 @@ class SignUpSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("You must be at least 18 years old.")
         return value
 
-    def validate_password(self, value):
-        validator = StrongPasswordValidator()
-        try:
-            validator.validate(value)
-        except ValidationError as e:
-            raise serializers.ValidationError(e.messages)
-        return value
-
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("This email is already registered")
+        if User.objects.filter(email__iexact=value.strip()).exists():
+            raise serializers.ValidationError("This email is already registered.")
         return value
 
     def create(self, validated_data):
@@ -273,4 +278,44 @@ class SignUpSerializer(serializers.ModelSerializer):
         if birth_date is not None:
             user.profile.birth_date = birth_date
         user.profile.save()
+        return user
+    
+class PasswordChangeSerializer(PasswordValidationMixin, serializers.Serializer):
+    password = serializers.CharField(
+        required=True,
+        write_only=True,
+        trim_whitespace=False,
+    )
+
+    newPassword = serializers.CharField(
+        required=True,
+        write_only=True,
+        trim_whitespace=False,
+    )
+    
+    def validate_password(self, value:str)->str:
+        request = self.context.get("request", None)
+        user = getattr(request, "user", None)
+        
+        if user is None or not user.is_authenticated:
+            raise ValidationError("Authentication credentials were not provided.")
+        
+        if not user.check_password(value):
+            raise serializers.ValidationError("The current (old) password is incorrect.")
+        return value
+    
+    def validate_newPassword(self, value: str) -> str:
+        return self._validate_strong_password(value)
+    
+    def save(self, **kwargs):
+        request = self.context.get("request", None)
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            raise serializers.ValidationError("Authentication credentials were not provided.")
+        
+        new_pw = self.validated_data["newPassword"]
+        if user.check_password(new_pw):
+            raise ValidationError({"newPassword": "New password must be different from the old one."})
+        user.set_password(new_pw)
+        user.save()
         return user

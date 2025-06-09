@@ -1,4 +1,3 @@
-from multiprocessing import context
 from rest_framework import viewsets, permissions, filters, mixins, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,22 +10,38 @@ from channels.layers import get_channel_layer
 
 from .models import Post, Like
 from .serializers import PostDetailSerializer, PostSerializer
+from Posts import serializers
 
 
-def broadcast_to_posts(event_type: str, data: dict):
-    # Guard pentru date proaste
-    if not data or not isinstance(data, dict) or data is None:
-        print(f"[WS] WARN: {event_type} cu data invalidă, NU trimit: {data}")
-        return
-    else:
-        print(f"[WS] {event_type} => OK, data keys: {list(data.keys())}")
-    async_to_sync(get_channel_layer().group_send)(
-        "posts",
-        {
-            "type": event_type,
-            "data": data,
+def broadcast_call(post, request):
+    serializer  = PostSerializer(post, context={"request": request})
+    data =serializer.data
+    data["action"]="post_update"
+    
+    channel_layer=get_channel_layer()
+    
+    public_payload={
+        "type": "post_update",
+        "data": {
+            "id":             data["id"],
+            "likes_count":    data["likes_count"],
+            "comments_count": data.get("comments_count", 0),
+            "reposts_count":  data.get("reposts_count",0),
         }
-    )
+    }
+    async_to_sync(channel_layer.group_send)("posts_broadcast", public_payload)
+     
+    private_payload ={
+        "type": "post_user_update",
+        "data": {
+            "id" :              post.id,
+            "liked_by_user":    data["liked_by_user"],
+            "reposted_by_user": data["reposted_by_user"],
+        }
+    }
+    user_group = f"posts_user_{request.user.id}"
+    async_to_sync(channel_layer.group_send)(
+        user_group, private_payload)
 
 class LikeActionMixin:
 
@@ -38,12 +53,12 @@ class LikeActionMixin:
         else:
             Like.objects.filter(post=post, user=request.user).delete()
 
-        # 🔧 Folosim serializer complet și trimitem datele întregi prin WS
-        data = PostSerializer(post, context={"request": request}).data
-        data["action"] = "post_update"
-        broadcast_to_posts("post_update", data)
+        broadcast_call(post, request)
 
-        return Response(data, status=status.HTTP_200_OK)
+        return Response(
+            PostSerializer(post, context={"request": request}).data,
+            status=status.HTTP_200_OK
+        )
     
 class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
     queryset = Post.objects.all().select_related('author', 'author__profile')
@@ -86,7 +101,10 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
         instance = serializer.save(author=self.request.user)
         data = PostSerializer(instance, context={"request": self.request}).data
         data["action"] = "post_create"
-        broadcast_to_posts("post_create", data)
+        async_to_sync(get_channel_layer().group_send)(
+            "posts_broadcast",
+            {"type": "post_create", "data": data}
+        )
         
     @action(detail=True, methods=['post'], url_path='repost')
     def repost(self, request, pk=None):
@@ -98,17 +116,21 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
         existing = Post.objects.filter(
             author=user, parent=parent, type=Post.REPOST
         ).first()
-        print(f"[BACKEND] Checking repost for user={user} parent={parent.id}")
 
         if existing:
-            print(f"[BACKEND] Deleting existing repost id={existing.id}")
-            id_to_delete = existing.id
+            deleted_id = existing.id
             existing.delete()
-            broadcast_to_posts("post_delete", {"id": id_to_delete})
-            data2 = PostSerializer(parent, context={"request": request}).data
-            data2["action"] = "post_update"
-            broadcast_to_posts("post_update", data2)
-            return Response(data2, status=status.HTTP_200_OK)
+
+            # 1) broadcast the child‐post deletion
+            async_to_sync(get_channel_layer().group_send)(
+                "posts_broadcast",
+                {
+                  "type": "post_delete",
+                  "data": { "id": deleted_id }
+                }
+            )
+            broadcast_call(parent, request)
+            return Response(status=status.HTTP_200_OK)
         else:
             repost = Post.objects.create(
                 author=user,
@@ -116,17 +138,20 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
                 type=Post.REPOST,
                 description=""
             )
-            print(f"[BACKEND] Created new repost id={repost.id} parent={parent.id}")
+        # notify everyone about the new repost item
+        payload = PostSerializer(repost, context={"request": request}).data
+        payload["action"] = "post_create"
+        async_to_sync(get_channel_layer().group_send)(
+            "posts_broadcast",
+            {"type": "post_create", "data": payload}
+        )
 
-        # Trimite WS NOU cu repostul (post_create)
-        data = PostSerializer(repost, context={"request": request}).data
-        data["action"] = "post_create"
-        broadcast_to_posts("post_create", data)
-        # Trimite și update la original pentru count
-        data2 = PostSerializer(parent, context={"request": request}).data
-        data2["action"] = "post_update"
-        broadcast_to_posts("post_update", data2)
-        return Response(data, status=status.HTTP_200_OK)
+        # update parent counts/flags
+        broadcast_call(parent, request)
+        return Response(
+            PostSerializer(repost, context={"request": request}).data,
+            status=status.HTTP_201_CREATED
+        )
     
     @action(detail=True, methods=['post'], url_path='quote', parser_classes=[MultiPartParser, FormParser])
     def quote(self, request, pk=None):
@@ -150,9 +175,11 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
         resp_data = PostSerializer(quote_post, context={'request': request}).data
         resp_data['action'] = 'post_create'
 
-        # 4) Broadcast WS
-        broadcast_to_posts('post_create', resp_data)
-
+        async_to_sync(get_channel_layer().group_send)(
+            "posts_broadcast",
+            {"type": "post_create", "data": resp_data}
+        )
+        broadcast_call(parent, request)
         return Response(resp_data, status=status.HTTP_201_CREATED)
 
 
@@ -169,16 +196,23 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
             description=content
         )
         reply_data = PostSerializer(reply_post, context={"request": request}).data
-        parent_data = PostSerializer(parent, context={"request": request}).data
-        parent_data["action"] = "post_update"
-        broadcast_to_posts("post_update", parent_data)
-        broadcast_to_posts("post_create", reply_data)
+        reply_data["action"] = "post_create"
+        async_to_sync(get_channel_layer().group_send)(
+            "posts_broadcast",
+            {"type": "post_create", "data": reply_data}
+        )
+        broadcast_call(parent, request)
         return Response(reply_data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance_id = instance.id
+        post_id = instance.id
+        parent = instance.parent
         self.perform_destroy(instance)
-        # WS broadcast: anunță toți userii să șteargă postarea
-        broadcast_to_posts("post_delete", {"id": instance_id})
+        async_to_sync(get_channel_layer().group_send)(
+            "posts_broadcast",
+            {"type": "post_delete", "data": {"id": post_id}}
+        )
+        if parent is not None:
+            broadcast_call(parent, request)
         return Response(status=status.HTTP_204_NO_CONTENT)

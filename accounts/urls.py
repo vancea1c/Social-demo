@@ -6,14 +6,15 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse
 
 from .views import (
+    AccountMeView,
     CheckEmailView,
     CheckUsernameView,
+    PasswordChangeView,
     SignInApiView,
     SignUpApiView,
     ForgotPasswordView,
     VerifyResetCodeView,
     ResetPasswordView,
-    GetUserView
 )
 
 app_name = 'accounts_api'
@@ -32,6 +33,7 @@ def api_root(request, format=None):
         'forgot_password':      reverse('accounts_api:forgot-password',    request=request, format=format),
         'verify_reset_code':    reverse('accounts_api:verify-reset-code', request=request, format=format),
         'reset_password':       reverse('accounts_api:reset-password',    request=request, format=format),
+        'change_password/':     reverse('accounts_api:change-password', request=request, format=format),
         'me/':                  reverse('accounts_api:accounts-me', request=request, format=format)
     })
 
@@ -47,5 +49,6 @@ urlpatterns = [
     path('forgot-password/',    ForgotPasswordView.as_view(),    name='forgot-password'),
     path('verify-reset-code/',  VerifyResetCodeView.as_view(),  name='verify-reset-code'),
     path('reset-password/',     ResetPasswordView.as_view(),     name='reset-password'),
-    path('me/', GetUserView.as_view(), name='accounts-me'),
+    path("change_password/", PasswordChangeView.as_view(), name="change-password"),
+    path('me/', AccountMeView.as_view(), name='accounts-me'),
 ]

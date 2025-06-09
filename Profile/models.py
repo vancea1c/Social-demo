@@ -55,6 +55,11 @@ class Profile(models.Model):
     def last_name(self):
         return self.user.last_name
     
+    @property
+    def username(self):
+        return self.user.username
+
+    
     def __str__(self) -> str:
         return f"{self.user.username}'s Profile"
     
