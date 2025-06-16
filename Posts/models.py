@@ -27,7 +27,6 @@ class Post(models.Model):
         related_name='children',
         on_delete=models.CASCADE
     )
-        # nou: tipul postării
     type        = models.CharField(
         max_length=6,
         choices=TYPE_CHOICES,
@@ -45,10 +44,8 @@ class Post(models.Model):
     
     def __str__(self):
         user = self.author.username
-        # repost simplu (share fără comentariu)
         if self.type == Post.REPOST and self.parent:
             return f"{user} reposted #{self.parent.id}"
-        # quote-repost (share + comentariu)
         if self.type == Post.QUOTE and self.parent:
             base = f"{user} quoted #{self.parent.id}"
             if self.description:
@@ -56,7 +53,6 @@ class Post(models.Model):
             return base
         if self.type == Post.REPLY and self.parent:
             return f"{user} replied to #{self.parent.id}"
-        # postare originală
         return f"{user} posted on {self.created_at:%Y-%m-%d %H:%M}"
     class Meta:
         ordering = ['-created_at']

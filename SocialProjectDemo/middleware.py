@@ -12,10 +12,6 @@ def get_user(validated_token):
     return user or AnonymousUser()
 
 class JwtCookieMiddleware(BaseMiddleware):
-    """
-    Looks for our 'access_token' cookie, checks it,
-    then sets scope['user'] = that user (or anonymous).
-    """
     async def __call__(self, scope, receive, send):
         headers = dict(scope["headers"])
         cookie_header = headers.get(b"cookie", b"").decode()

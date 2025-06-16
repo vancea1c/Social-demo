@@ -15,15 +15,6 @@ class ProfileViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet
 ):
-    """
-    list:
-        GET /api/profile/      → YOUR profile
-    retrieve:
-        GET /api/profile/me/   → YOUR profile
-        GET /api/profile/jane/ → Jane s profile (public or your own)
-    partial_update:
-        PATCH /api/profile/jane/ → update *your* profile only
-    """
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]

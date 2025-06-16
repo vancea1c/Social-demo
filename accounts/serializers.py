@@ -60,13 +60,12 @@ class ForgotPwRequestSerializer( serializers.Serializer):
     
     def save(self):
         user = self.user
-        # generează cod și îl stochează în cache
+
         code = "".join(
             random.choices(string.ascii_letters + string.digits, k=6)
         )
         cache_key = f"pw_reset_{user.id}"
-        cache.set(cache_key, code, 300)  # 5 minute
-        # trimite email
+        cache.set(cache_key, code, 300)
         subject = "Password Reset Code"
         message = (
             f"Hello {user.username},\n\n"
@@ -99,7 +98,6 @@ class ForgotPwVerifySerializer( serializers.Serializer):
         code = attrs["code"].strip()
         user = get_user_or_error(identifier_value, field_name="identifier")
 
-        # compară codul cu cel din cache
         cache_key = f"pw_reset_{user.id}"
         real_code = cache.get(cache_key)
         if real_code is None:
@@ -159,11 +157,9 @@ class ResetPasswordSerializer( PasswordValidationMixin, serializers.Serializer):
     def save(self):
         user = self.validated_data["user"]
         new_pw = self.validated_data["newPassword"]
-        # schimbă parola și salvează
         user.set_password(new_pw)
         user.save()
 
-        # invalidează codul în cache
         cache_key = f"pw_reset_{user.id}"
         cache.delete(cache_key)
 

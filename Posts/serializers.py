@@ -13,8 +13,6 @@ class PostSerializer(serializers.ModelSerializer):
     username     = serializers.CharField(source='author.username', read_only=True)
     created_at = serializers.DateTimeField(format="%Y-%m-%dT%H:%M:%SZ", read_only=True)
     
-    
-        # nou: tipul și parent-ul
     type = serializers.ChoiceField(
         choices=Post.TYPE_CHOICES,
         default=Post.POST,
@@ -41,8 +39,6 @@ class PostSerializer(serializers.ModelSerializer):
     liked_by_user     = serializers.SerializerMethodField(read_only=True)
     reposted_by_user  = serializers.SerializerMethodField(read_only=True)
     
-    # dacă vrei să-ți vină și lista de comentarii:
-    # comments = CommentSerializer(many=True, read_only=True)
 
     class Meta:
         model = Post
@@ -73,12 +69,11 @@ class PostSerializer(serializers.ModelSerializer):
     
     def get_reposted_by_user(self, obj):
         user = self.context['request'].user
-        # verificăm dacă există un repost făcut deja de user pentru acest post
         return obj.children.filter(author=user, type=Post.REPOST).exists()
 
     def validate_uploads(self, files):
         MAX_FILES = 4
-        MAX_VIDEO_BYTES = 256 * 1024 * 1024  # 256 MB
+        MAX_VIDEO_BYTES = 256 * 1024 * 1024
         if len(files) > MAX_FILES:
             raise serializers.ValidationError(
                 f"You can upload up to {MAX_FILES} media items (photos or videos)."

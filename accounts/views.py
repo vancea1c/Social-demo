@@ -49,7 +49,7 @@ class AccountMeView(APIView):
         for post in Post.objects.filter(author=user):
             for media in post.posted_media.all():
                 if media.file:
-                    media.file.delete(save=False)  # remove from storage
+                    media.file.delete(save=False) 
                 media.delete()
                 
                 
@@ -75,7 +75,6 @@ class MyTokenObtainPairView(TokenObtainPairView):
         )
         return resp
 
-# Create your views here.
 class ForgotPasswordView(generics.GenericAPIView):
     serializer_class=ForgotPwRequestSerializer
     permission_classes = [AllowAny]

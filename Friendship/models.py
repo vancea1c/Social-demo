@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-# Create your models here.
 
 class FriendRequest(models.Model):
     STATUS_PENDING = 'pending'
@@ -30,10 +29,17 @@ class FriendRequest(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_PENDING
     )
-    
+    active = models.BooleanField(default=True, db_index=True)
     def clean(self):
         if self.from_user == self.to_user:
             raise ValidationError("You cannot send a friend request to yourself.")
+        
+        if FriendRequest.objects.filter(
+            from_user=self.to_user,
+            to_user=self.from_user,
+            active=True
+        ).exists():
+            raise ValidationError("This user has already sent you a friend request.")
         
     def save(self, *args, **kwargs):
         self.clean()

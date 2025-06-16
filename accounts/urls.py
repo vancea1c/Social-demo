@@ -1,4 +1,3 @@
-# accounts/urls.py
 from django.urls import path
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -38,10 +37,8 @@ def api_root(request, format=None):
     })
 
 urlpatterns = [
-    # 1) index pe rădăcină
     path('',                         api_root,                name='accounts-root'),
 
-    # 2) restul endpoint-urilor
     path('sign_up/',      SignUpApiView.as_view(),      name='sign_up'),
     path('sign_in/',      SignInApiView.as_view(),      name='sign_in'),
     path('check-username/', CheckUsernameView.as_view(), name='check-username'),

@@ -34,7 +34,6 @@ ALLOWED_HOSTS = [
 ]
 
 
-# Application definition
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -149,7 +148,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://25.4.221.50:5173",
 ]
 
-# Dacă ești pe Django >=4, pentru CSRF:
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
 ]
@@ -166,11 +164,13 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=3),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=10),
     'AUTH_HEADER_TYPES': ('Bearer',),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,

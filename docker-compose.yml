@@ -14,10 +14,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
-      interval: 10s              # how often to run the check
-      timeout: 5s                # if pg_isready takes longer than 5s, consider it a failure
-      retries: 5                 # after 5 failures, mark the container as unhealthy
-      start_period: 15s          # give Postgres 15s to initialize before starting to probe
+      interval: 10s              
+      timeout: 5s                
+      retries: 5                
+      start_period: 15s          
 
   redis:
     image: redis:latest
