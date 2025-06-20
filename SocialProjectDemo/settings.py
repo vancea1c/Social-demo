@@ -124,6 +124,10 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 
 USE_TZ = True
+# CSP_DEFAULT_SRC = ("'self'",)
+# CSP_SCRIPT_SRC  = ("'self'", "https://cdn.jsdelivr.net",)
+# CSP_STYLE_SRC   = ("'self'", "https://fonts.googleapis.com",)
+# CSP_IMG_SRC     = ("'self'", "data:",)
 
 
 # Static files (CSS, JavaScript, Images)
@@ -140,6 +144,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
@@ -147,34 +153,46 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.1.2:5173",
     "http://25.4.221.50:5173",
 ]
+CSRF_TRUSTED_ORIGINS = [ "http://localhost:5173",]
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-]
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "social.project1304@gmail.com"
 EMAIL_HOST_PASSWORD = "phok xqvf vvhp dzvh"
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    # 'DEFAULT_THROTTLE_CLASSES': [
+    #     'rest_framework.throttling.AnonRateThrottle',
+    #     'rest_framework.throttling.UserRateThrottle',
+    # ],
+    # 'DEFAULT_THROTTLE_RATES': {
+    #     'anon': '100/hour',
+    #     'user': '1000/day',
+    # },
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    
+
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
 }
+
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=3),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=10),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'AUTH_HEADER_TYPES': ('Bearer',),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,
 }
+
+
 ASGI_APPLICATION = "SocialProjectDemo.asgi.application"
 
 CHANNEL_LAYERS = {
@@ -185,6 +203,7 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -194,6 +213,7 @@ CACHES = {
         }
     }
 }
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -207,3 +227,11 @@ LOGGING = {
         },
     },
 }
+# SECURE_SSL_REDIRECT = True  
+# SESSION_COOKIE_SECURE = True  
+# CSRF_COOKIE_SECURE = True  
+# SECURE_HSTS_SECONDS = 31536000 
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True 
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# SECURE_SSL_REDIRECT = not DEBUG
+# APPEND_SLASH = False

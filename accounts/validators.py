@@ -5,18 +5,9 @@ from django.utils.translation import gettext as _
 
 
 class StrongPasswordValidator:
-    """
-    Verify:
-    -min 8 characters
-    -at least one UPPER CASE
-    -at least one lower case
-    -at least one integer
-    -at least one symbol
-    """
-
     def validate(self, password, user=None):
         errors = []
-
+        
         if len(password) < 8:
             errors.append(_("Your password must have at least 8 characters."))
 
@@ -38,7 +29,6 @@ class StrongPasswordValidator:
             errors.append(
                 _("Your password must contain at least one symbol (ex: !, @, #, etc..)")
             )
-
         if errors:
             raise ValidationError(errors)
 

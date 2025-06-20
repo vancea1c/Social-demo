@@ -24,13 +24,6 @@ class EventConsumer(AsyncJsonWebsocketConsumer):
         logger.info(f"WebSocket DISCONNECTED: code={close_code}")
 
     async def event_message(self, event):
-        """
-        All real-time events funnel through here.
-        Expect event = {
-          "event_type": "post_create"|"notification_message"|...,
-          "data": { ... }
-        }
-        """
         payload = {"type": event["event_type"], "data": event["data"]}
         try:
             await self.send_json(payload)
