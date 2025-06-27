@@ -10,11 +10,11 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from Profile.models import Profile, GENDER_CHOICES
+from Profile.models import GENDER_CHOICES
 
 import datetime
 
-from accounts.validators import StrongPasswordValidator
+from accounts.validators import FirstNameValidator, LastNameValidator, StrongPasswordValidator
 from accounts.validators import UsernameValidator
 from accounts.utils import get_user_or_error
 
@@ -24,7 +24,7 @@ class PasswordValidationMixin:
     def _validate_strong_password(self, value: str) -> str:
         validator = StrongPasswordValidator()
         try:
-            validator.validate(value)
+            validator(value)
         except DjangoValidationError as e:
             raise serializers.ValidationError(e.messages)
         return value
@@ -213,6 +213,15 @@ class SignInSerializer(serializers.Serializer):
         return attrs
 
 class SignUpSerializer(PasswordValidationMixin, serializers.ModelSerializer):
+    first_name = serializers.CharField(
+        required=True,
+        validators=[FirstNameValidator()])
+    last_name = serializers.CharField(
+        required=True,
+        validators=[LastNameValidator()])
+    username = serializers.CharField(
+        required=True,
+        validators=[UsernameValidator()])
     email = serializers.EmailField(required=True)
     gender = serializers.ChoiceField(choices=GENDER_CHOICES, required=True)
     birth_date = serializers.DateField(required=True)
@@ -237,14 +246,6 @@ class SignUpSerializer(PasswordValidationMixin, serializers.ModelSerializer):
                 }
             },
         }
-
-    def validate_username(self, value):
-        validator = UsernameValidator()
-        try:
-            validator.validate(value)
-        except ValidationError as e:
-            raise serializers.ValidationError(e.messages)
-        return value
 
     def validate_birth_date(self, value):
         today = datetime.date.today()

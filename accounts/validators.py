@@ -5,7 +5,7 @@ from django.utils.translation import gettext as _
 
 
 class StrongPasswordValidator:
-    def validate(self, password, user=None):
+    def __call__(self, password, user=None):
         errors = []
         
         if len(password) < 8:
@@ -18,7 +18,7 @@ class StrongPasswordValidator:
 
         if not re.search(r"[a-z]", password):
             errors.append(
-                _("Your passsword must contain at least one lower case (a-z).")
+                _("Your password must contain at least one lower case (a-z).")
             )
 
         if not re.search(r"\d", password):
@@ -27,7 +27,7 @@ class StrongPasswordValidator:
         symbol_pattern = r'[!@#$%^&*()_+\-=\[\]{};\'":\\|,.<>\/?]'
         if not re.search(symbol_pattern, password):
             errors.append(
-                _("Your password must contain at least one symbol (ex: !, @, #, etc..)")
+                _("Your password must contain at least one symbol (ex: !, @, #, etc...)")
             )
         if errors:
             raise ValidationError(errors)
@@ -41,14 +41,17 @@ class StrongPasswordValidator:
 
 
 class UsernameValidator:
-    def validate(self, username, user=None):
+    def __call__(self, username, user=None):
         errors = []
 
         if len(username) < 1:
-            errors.append(_("Please choose an username."))
+            errors.append(_("Please choose a username."))
 
         if len(username) < 3:
             errors.append(_("Your Username is too short."))
+            
+        if len(username) > 20:
+            errors.append(_("Username cannot exceed 20 characters."))
 
         pattern = r"^[a-zA-Z0-9_.]+$"
         if not re.match(pattern, username):
@@ -64,4 +67,58 @@ class UsernameValidator:
             "Your username must have at least 3 characters"
             "and can only contain letters, numbers, "
             "underscores and periods."
+        )
+
+class FirstNameValidator:
+    def __call__(self, first_name, user=None):
+        errors = []
+
+        if len(first_name) < 1:
+            errors.append(_("Please choose a first name."))
+
+        if len(first_name) < 3:
+            errors.append(_("Your first name is too short."))
+
+        if len(first_name) > 30:
+            errors.append(_("First name cannot exceed 30 characters."))
+        pattern = r"^[a-zA-Z]+$"
+        if not re.match(pattern, first_name):
+            errors.append(
+                _("First names can only use letters (a-z, A-Z).")
+            )
+        if errors:
+            raise ValidationError(errors)
+
+    def get_help_text(self):
+        return _(
+            "Your first name must have at least 3 characters"
+            "and cannot exceed 30 characters."
+        )
+        
+class LastNameValidator:
+    def __call__(self, last_name, user=None):
+        errors = []
+
+        if len(last_name) < 1:
+            errors.append(_("Please choose a last name."))
+
+        if len(last_name) < 3:
+            errors.append(_("Your last name is too short."))
+
+        if len(last_name) > 20:
+            errors.append(_("Last name cannot exceed 20 characters."))
+            
+        pattern = r"^[a-zA-Z]+$"
+        if not re.match(pattern, last_name):
+            errors.append(
+                _("Last names can only use letters (a-z, A-Z).")
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def get_help_text(self):
+        return _(
+            "Your last name must have at least 3 characters"
+            "and cannot exceed 20 characters."
         )
