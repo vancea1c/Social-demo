@@ -4,15 +4,12 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.contrib.contenttypes.models import ContentType
 
-from Friendship.models import FriendRequest
 from Notifications.serializers import NotificationsSerializer
 from Profile.models import Profile
 from Posts.models import Post, Like
 from .models import Notifications
 from events.utils import send_real_time
 
-FRIEND_REQ_CT = ContentType.objects.get_for_model(FriendRequest)
-POST_CT       = ContentType.objects.get_for_model(Post)
 
 
 def make_notification(recipient, actor, n_type, ct, obj_id):
@@ -24,10 +21,12 @@ def make_notification(recipient, actor, n_type, ct, obj_id):
         target_content_type=ct,
         target_object_id=obj_id,
     )
+    
 @receiver(post_save, sender=Post, dispatch_uid="notif_new_post")
 def notify_friends_new_post(sender, instance, created, **kwargs):
     if not created or instance.type != Post.POST:
         return
+    post_ct = ContentType.objects.get_for_model(Post)
     author  = instance.author
     friends = Profile.objects.get(user=author).friends.all()
 
@@ -36,7 +35,7 @@ def notify_friends_new_post(sender, instance, created, **kwargs):
             recipient=f.user,
             actor=author,
             n_type=Notifications.NEW_POST,
-            ct=POST_CT,
+            ct=post_ct,
             obj_id=instance.pk
         )
         for f in friends
@@ -60,11 +59,12 @@ def notify_post_quote(sender, instance, created, **kwargs):
     original = instance.parent
     if not original or original.author == instance.author:
         return
+    post_ct = ContentType.objects.get_for_model(Post)
     notif = make_notification(
         recipient=original.author,
         actor=instance.author,
         n_type=Notifications.POST_QUOTE,
-        ct=POST_CT,
+        ct=post_ct,
         obj_id=original.pk
     )
     with transaction.atomic():
@@ -85,11 +85,12 @@ def notify_post_comment(sender, instance, created, **kwargs):
     parent = instance.parent
     if parent.author == instance.author:
         return
+    post_ct = ContentType.objects.get_for_model(Post)
     notif = make_notification(
         recipient=parent.author,
         actor=instance.author,
         n_type=Notifications.POST_COMMENT,
-        ct=POST_CT,
+        ct=post_ct,
         obj_id=parent.pk
     )
     with transaction.atomic():
@@ -111,11 +112,12 @@ def notify_comment_reply(sender, instance, created, **kwargs):
     if parent_reply.author == instance.author or parent_reply.type != Post.REPLY:
         return
     top_post = parent_reply.parent or parent_reply
+    post_ct = ContentType.objects.get_for_model(Post)
     notif = make_notification(
         recipient=parent_reply.author,
         actor=instance.author,
         n_type=Notifications.COMMENT_REPLY,
-        ct=POST_CT,
+        ct=post_ct,
         obj_id=top_post.pk
     )
     with transaction.atomic():
@@ -131,8 +133,9 @@ def notify_comment_reply(sender, instance, created, **kwargs):
         
 @receiver(post_delete, sender=Post, dispatch_uid="notif_delete_post")
 def delete_notifications_for_post(sender, instance, **kwargs):
+    post_ct = ContentType.objects.get_for_model(Post)
     notifs = Notifications.objects.filter(
-        target_content_type=POST_CT,
+        target_content_type=post_ct,
         target_object_id=instance.pk
     )
     for notif in notifs:

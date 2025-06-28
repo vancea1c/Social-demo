@@ -5,7 +5,7 @@ from django.utils.translation import gettext as _
 
 
 class StrongPasswordValidator:
-    def __call__(self, password, user=None):
+    def validate(self, password, user=None):
         errors = []
         
         if len(password) < 8:
@@ -41,7 +41,10 @@ class StrongPasswordValidator:
 
 
 class UsernameValidator:
-    def __call__(self, username, user=None):
+    def __call__(self, value):
+        self.validate(value)
+
+    def validate(self, username, user=None):
         errors = []
 
         if len(username) < 1:
@@ -70,7 +73,10 @@ class UsernameValidator:
         )
 
 class FirstNameValidator:
-    def __call__(self, first_name, user=None):
+    def __call__(self, value):
+        self.validate(value)
+
+    def validate(self, first_name, user=None):
         errors = []
 
         if len(first_name) < 1:
@@ -96,7 +102,10 @@ class FirstNameValidator:
         )
         
 class LastNameValidator:
-    def __call__(self, last_name, user=None):
+    def __call__(self, value):
+        self.validate(value)
+
+    def validate(self, last_name, user=None):
         errors = []
 
         if len(last_name) < 1:

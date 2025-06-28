@@ -14,8 +14,6 @@ from .models import Post, Like
 from Notifications.models import Notifications
 from .serializers import PostDetailSerializer, PostSerializer
 
-POST_CT = ContentType.objects.get_for_model(Post)
-
 def get_visible_user_ids(post):
     author_profile = post.author.profile
 
@@ -88,7 +86,7 @@ class LikeActionMixin:
                 to_user=post.author,
                 actor=user,
                 notification_type=notif_type,
-                target_content_type=POST_CT,
+                target_content_type=ContentType.objects.get_for_model(Post),
                 target_object_id=post.id,
                 defaults={"active": True},
             )
@@ -203,7 +201,7 @@ class PostViewSet(LikeActionMixin, viewsets.ModelViewSet):
                 to_user=post.author,
                 actor=user,
                 notification_type=notif_type,
-                target_content_type=POST_CT,
+                target_content_type=ContentType.objects.get_for_model(Post),
                 target_object_id=post.id,
                 defaults={"active": True},
             )

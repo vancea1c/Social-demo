@@ -24,7 +24,7 @@ class PasswordValidationMixin:
     def _validate_strong_password(self, value: str) -> str:
         validator = StrongPasswordValidator()
         try:
-            validator(value)
+            validator.validate(value)
         except DjangoValidationError as e:
             raise serializers.ValidationError(e.messages)
         return value
